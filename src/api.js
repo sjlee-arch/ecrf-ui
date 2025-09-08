@@ -1,42 +1,97 @@
-// src/api.js
-const BASE = ""; // 상대경로 사용 → /api 로 호출됨
+// 1) 빌드 타임에 주입되는 환경변수 읽기 (Vercel에서 설정한 Key 그대로)
+const ENV_BASE = import.meta.env?.VITE_API_BASE_URL;
 
-// 템플릿 목록
-export async function listForms() {
-  const r = await fetch(`${BASE}/api/forms`);
-  if (!r.ok) throw new Error("목록 조회 실패");
-  return r.json();
-}
-export { listForms as getForms };
+// 2) 혹시 런타임 오버라이드(필요시)를 위해 window 전역도 지원 (없으면 무시)
+const RUNTIME_BASE =
+  typeof window !== "undefined" && window.__ECRF_API_BASE_URL
+    ? window.__ECRF_API_BASE_URL
+    : undefined;
 
-// 템플릿 상세(메타)
-export async function getFormDetail(id) {
-  const r = await fetch(`${BASE}/api/forms/${id}`);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
+// 3) 최종 BASE URL 결정 (뒤 슬래시는 제거)
+const API_BASE = (RUNTIME_BASE || ENV_BASE || "").replace(/\/+$/, "");
 
-// 스키마 조회
-export async function getFormSchema(id) {
-  const r = await fetch(`${BASE}/api/forms/${id}/schema`);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+// 4) 환경값 없으면 즉시 알려주기
+if (!API_BASE) {
+  // 이 메시지가 보이면 Vercel 환경변수 Key/Value 또는 재배포가 문제라는 뜻
+  console.error(
+    "[eCRF] VITE_API_BASE_URL이 비어 있습니다. " +
+      "Vercel Project Settings → Environment Variables에서 " +
+      "Key=VITE_API_BASE_URL, Value=https://ecrf-app.onrender.com 로 설정하고 " +
+      "배포(재배포)하세요."
+  );
 }
 
-// 스터디에 폼 붙이기(복사)
-export async function attachToStudy(sourceFormId, studyId = "DEMO", visits = ["V1","V2"]) {
-  const r = await fetch(`${BASE}/api/studies/${studyId}/forms`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sourceFormId, visits })
+// 공통 URL 조립
+function u(path) {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE}${p}`;
+}
+
+// ------- 실제 API 함수들 -------
+
+// 스터디 정의 가져오기
+export async function fetchStudyDefinition(studyId) {
+  const res = await fetch(u(`/api/studies/${encodeURIComponent(studyId)}/definition`), {
+    headers: { "Accept": "application/json" },
   });
-  if (!r.ok) throw new Error("복사 실패");
-  return r.json();
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `fetchStudyDefinition failed: ${res.status} ${res.statusText} ${text}`
+    );
+  }
+  return res.json();
 }
 
-// 스터디 정의(방문/폼/스키마 번들)
-export async function getStudyDefinition(studyId = "DEMO") {
-  const r = await fetch(`${BASE}/api/studies/${studyId}/definition`);
-  if (!r.ok) throw new Error("스터디 정의 조회 실패");
-  return r.json();
+// 폼 템플릿 목록(예: /api/forms)
+export async function fetchTemplates() {
+  const res = await fetch(u("/api/forms"), {
+    headers: { "Accept": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`fetchTemplates failed: ${res.status} ${res.statusText} ${text}`);
+  }
+  return res.json();
 }
+
+// 레코드 목록
+export async function fetchRecords(studyId, formId) {
+  const res = await fetch(
+    u(`/api/studies/${encodeURIComponent(studyId)}/forms/${encodeURIComponent(formId)}/records`),
+    { headers: { "Accept": "application/json" } }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`fetchRecords failed: ${res.status} ${res.statusText} ${text}`);
+  }
+  return res.json();
+}
+
+// 레코드 저장
+export async function saveRecord(studyId, formId, data) {
+  const res = await fetch(
+    u(`/api/studies/${encodeURIComponent(studyId)}/forms/${encodeURIComponent(formId)}/records`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`saveRecord failed: ${res.status} ${res.statusText} ${text}`);
+  }
+  return res.json();
+}
+
+// 헬스체크(선택) — 배포 후 네트워크 탭에서 한번 호출해보기 좋음
+export async function ping() {
+  const res = await fetch(u("/api/health")).catch((e) => {
+    throw new Error(`ping failed: ${e.message}`);
+  });
+  return res.ok;
+}
+
+// 디버그용: 현재 BASE 출력 (빌드 결과가 올바른지 콘솔에서 확인)
+console.log("[eCRF] API_BASE =", API_BASE);
