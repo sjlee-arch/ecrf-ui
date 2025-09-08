@@ -1,25 +1,33 @@
-// ecrf-ui/src/api.js
-import axios from "axios";
-
-// ✅ 반드시 절대경로만 사용 (프록시/상대경로 X)
-//   환경변수 없으면 바로 Render 백엔드 도메인 사용
+// src/api.js
 const API_BASE =
-  (import.meta && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
-  "https://ecrf-app.onrender.com";
+  (import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
+  'https://ecrf-app.onrender.com'; // 안전한 기본값
 
-console.log("[API_BASE at runtime]", API_BASE);
+// 베이스/슬래시 정리
+const base = API_BASE.replace(/\/+$/, ''); // 끝 슬래시 제거
+const u = (path) => `${base}${path.startsWith('/') ? '' : '/'}${path}`;
 
-export const api = axios.create({
-  baseURL: API_BASE,       // ← 절대경로
-  timeout: 15000,
-  headers: { "Content-Type": "application/json" },
-});
+async function getJson(url) {
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  const text = await res.text();
+  if (!res.ok) {
+    // 에러 내용을 콘솔에서 볼 수 있게 조금 노출
+    throw new Error(`API ${res.status} ${res.statusText}: ${text.slice(0, 200)}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid JSON from ${url}: ${text.slice(0, 200)}`);
+  }
+}
 
-// 엔드포인트들
-export const getForms = () => api.get("/api/forms");
-export const getStudyDefinition = (studyId) =>
-  api.get(`/api/studies/${studyId}/definition`);
-export const saveRecord = (studyId, formCode, payload) =>
-  api.post(`/api/studies/${studyId}/records/${formCode}`, payload);
-export const deleteRecord = (studyId, formCode, recordId) =>
-  api.delete(`/api/studies/${studyId}/records/${formCode}/${recordId}`);
+// 전체 폼 목록
+export async function fetchForms() {
+  return getJson(u('/api/forms'));
+}
+
+// 특정 스터디 정의
+export async function fetchDefinition(studyId = 'DEMO') {
+  const id = encodeURIComponent(studyId);
+  return getJson(u(`/api/studies/${id}/definition`));
+}
