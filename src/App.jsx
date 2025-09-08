@@ -3,9 +3,16 @@ import { useEffect, useMemo, useState } from "react";
 import Templates from "./Templates";
 
 const API_BASE =
-  import.meta.env?.VITE_API_BASE_URL ||
-  window.__API_BASE__ ||
-  window.location.origin;
+-   import.meta.env?.VITE_API_BASE_URL ||
+-   window.__API_BASE__ ||
+-   window.location.origin;
++ const RAW_API =
++   (import.meta.env?.VITE_API_BASE_URL ||
++     window.__API_BASE__ ||
++     window.location.origin ||
++     "").trim();
++ // 혼합콘텐츠 방지: http → https 강제, 끝의 슬래시는 제거
++ const API_BASE = RAW_API.replace(/^http:\/\//i, "https://").replace(/\/+$/, "");
 
 async function fetchJSON(url, init) {
   const r = await fetch(url, init);
